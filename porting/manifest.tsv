@@ -1807,7 +1807,10 @@ internal/rules/prefer_schema_over_json.go	preferSchemaOverJsonRecommendation	fun
 internal/rules/prefer_schema_over_json.go	parseJsonMethod	func	78	37	7fc8c69d3933976c
 internal/rules/prefer_schema_over_json.go	checkEffectTrySimple	func	118	28	4e221eccb9dbbaaa
 internal/rules/prefer_schema_over_json.go	checkEffectTryObject	func	148	55	e02ff86078ba5a4f
-internal/rules/prefer_schema_over_json.go	checkJsonMethodInEffectGen	func	205	13	73c14bad6b4af3a1
+internal/rules/prefer_schema_over_json.go	schemaDecoderMethods	var	204	18	af1902a2ab4c4da1
+internal/rules/prefer_schema_over_json.go	checkJsonMethodInEffectGen	func	225	13	c7e925a38127ca5e
+internal/rules/prefer_schema_over_json.go	isDirectSchemaDecoderArg	func	239	33	df5e5c2f203f5410
+internal/rules/prefer_schema_over_json.go	isSchemaDecoderFactoryCall	func	273	22	ede2be0107a0d15e
 internal/rules/prefer_schema_tagged_error.go	PreferSchemaTaggedError	var	13	16	d124bb5317dd9c2a
 internal/rules/prefer_schema_tagged_error.go	PreferSchemaTaggedErrorMatch	type	30	4	bf6d6d479a6994f3
 internal/rules/prefer_schema_tagged_error.go	AnalyzePreferSchemaTaggedError	func	35	25	dd49f4b3158265af

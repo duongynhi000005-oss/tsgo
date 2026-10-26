@@ -201,7 +201,27 @@ func checkEffectTryObject(tp *typeparser.TypeParser, _ *checker.Checker, node *a
 	return parseJsonMethod(lazyExpr.Expression())
 }
 
-// checkJsonMethodInEffectGen matches direct JSON.parse/stringify inside an Effect generator (Effect.gen or Effect.fn).
+var schemaDecoderMethods = []string{
+	"decode",
+	"decodeUnknown",
+	"decodeSync",
+	"decodeUnknownSync",
+	"decodeEffect",
+	"decodeUnknownEffect",
+	"decodeExit",
+	"decodeUnknownExit",
+	"decodeOption",
+	"decodeUnknownOption",
+	"decodeResult",
+	"decodeUnknownResult",
+	"decodeEither",
+	"decodeUnknownEither",
+	"decodePromise",
+	"decodeUnknownPromise",
+}
+
+// checkJsonMethodInEffectGen matches direct JSON.parse/stringify inside an Effect generator (Effect.gen or Effect.fn),
+// or JSON.parse passed directly to a Schema decoder in any context.
 func checkJsonMethodInEffectGen(tp *typeparser.TypeParser, _ *checker.Checker, node *ast.Node) *ast.Node {
 	// First check if this is a JSON method call
 	jsonNode := parseJsonMethod(node)
@@ -209,9 +229,66 @@ func checkJsonMethodInEffectGen(tp *typeparser.TypeParser, _ *checker.Checker, n
 		return nil
 	}
 
-	if tp.GetEffectContextFlags(node)&typeparser.EffectContextFlagInEffect == 0 {
+	if tp.GetEffectContextFlags(node)&typeparser.EffectContextFlagInEffect == 0 && !isDirectSchemaDecoderArg(tp, node) {
 		return nil
 	}
 
 	return jsonNode
+}
+
+func isDirectSchemaDecoderArg(tp *typeparser.TypeParser, node *ast.Node) bool {
+	call := node.AsCallExpression()
+	if call == nil || call.Expression == nil || call.Expression.Kind != ast.KindPropertyAccessExpression {
+		return false
+	}
+	prop := call.Expression.AsPropertyAccessExpression()
+	if prop == nil || prop.Name() == nil || scanner.GetTextOfNode(prop.Name()) != "parse" {
+		return false
+	}
+
+	current := node
+	for current.Parent != nil && current.Parent.Kind == ast.KindParenthesizedExpression {
+		current = current.Parent
+	}
+	parent := current.Parent
+	if parent == nil || parent.Kind != ast.KindCallExpression {
+		return false
+	}
+	parentCall := parent.AsCallExpression()
+	if parentCall == nil || parentCall.Arguments == nil || len(parentCall.Arguments.Nodes) == 0 || parentCall.Arguments.Nodes[0] != current {
+		return false
+	}
+
+	if isSchemaDecoderFactoryCall(tp, parentCall.Expression) {
+		return true
+	}
+
+	if len(parentCall.Arguments.Nodes) > 1 && isSchemaDecoderFactoryCall(tp, parentCall.Arguments.Nodes[1]) && tp.ParsePipeCall(parent) != nil {
+		return true
+	}
+
+	return false
+}
+
+func isSchemaDecoderFactoryCall(tp *typeparser.TypeParser, node *ast.Node) bool {
+	node = ast.SkipParentheses(node)
+	if node == nil || node.Kind != ast.KindCallExpression {
+		return false
+	}
+	call := node.AsCallExpression()
+	if call == nil || call.Arguments == nil || len(call.Arguments.Nodes) == 0 || call.Expression == nil {
+		return false
+	}
+	callee := ast.SkipParentheses(call.Expression)
+	if callee == nil {
+		return false
+	}
+	for _, methodName := range schemaDecoderMethods {
+		if tp.IsNodeReferenceToEffectSchemaModuleApi(callee, methodName) ||
+			tp.IsNodeReferenceToEffectParseResultModuleApi(callee, methodName) ||
+			tp.IsNodeReferenceToEffectSchemaParserModuleApi(callee, methodName) {
+			return true
+		}
+	}
+	return false
 }

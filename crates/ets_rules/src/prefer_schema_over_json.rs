@@ -5,7 +5,7 @@ use std::sync::LazyLock;
 use ets_etscore::Severity;
 use ets_rule::{Context, Rule};
 use ets_shim::P;
-use ets_shim::ast::{Diagnostic, Kind, Node};
+use ets_shim::ast::{self, Diagnostic, Kind, Node};
 use ets_shim::diagnostics::{self as tsdiag, Message};
 use ets_shim::scanner::get_text_of_node;
 use ets_typeparser::{
@@ -226,8 +226,29 @@ pub(crate) fn check_effect_try_object(tp: &mut TypeParser<'_>, node: P<Node>) ->
     parse_json_method(Some(lazy_expr.expression()))
 }
 
-// go: internal/rules/prefer_schema_over_json.go:205 checkJsonMethodInEffectGen
-// checkJsonMethodInEffectGen matches direct JSON.parse/stringify inside an Effect generator (Effect.gen or Effect.fn).
+// go: internal/rules/prefer_schema_over_json.go:204 schemaDecoderMethods
+pub(crate) static SCHEMA_DECODER_METHODS: &[&str] = &[
+    "decode",
+    "decodeUnknown",
+    "decodeSync",
+    "decodeUnknownSync",
+    "decodeEffect",
+    "decodeUnknownEffect",
+    "decodeExit",
+    "decodeUnknownExit",
+    "decodeOption",
+    "decodeUnknownOption",
+    "decodeResult",
+    "decodeUnknownResult",
+    "decodeEither",
+    "decodeUnknownEither",
+    "decodePromise",
+    "decodeUnknownPromise",
+];
+
+// go: internal/rules/prefer_schema_over_json.go:225 checkJsonMethodInEffectGen
+// checkJsonMethodInEffectGen matches direct JSON.parse/stringify inside an Effect generator (Effect.gen or Effect.fn),
+// or JSON.parse passed directly to a Schema decoder in any context.
 //
 // Rust: Go's unused checker parameter is dropped.
 pub(crate) fn check_json_method_in_effect_gen(
@@ -237,9 +258,76 @@ pub(crate) fn check_json_method_in_effect_gen(
     // First check if this is a JSON method call
     let json_node = parse_json_method(Some(node))?;
 
-    if !tp.get_effect_context_flags(node).intersects(EffectContextFlags::InEffect) {
+    if !tp.get_effect_context_flags(node).intersects(EffectContextFlags::InEffect)
+        && !is_direct_schema_decoder_arg(tp, node)
+    {
         return None;
     }
 
     Some(json_node)
+}
+
+// go: internal/rules/prefer_schema_over_json.go:239 isDirectSchemaDecoderArg
+pub(crate) fn is_direct_schema_decoder_arg(tp: &mut TypeParser<'_>, node: P<Node>) -> bool {
+    let call = node.as_call_expression();
+    if call.expression().kind() != Kind::PropertyAccessExpression {
+        return false;
+    }
+    let prop = call.expression().as_property_access_expression();
+    if get_text_of_node(prop.name()) != "parse" {
+        return false;
+    }
+
+    let mut current = node;
+    while let Some(parent) = current.parent()
+        && parent.kind() == Kind::ParenthesizedExpression
+    {
+        current = parent;
+    }
+    let Some(parent) = current.parent() else {
+        return false;
+    };
+    if parent.kind() != Kind::CallExpression {
+        return false;
+    }
+    let parent_call = parent.as_call_expression();
+    let arguments = parent_call.arguments().nodes();
+    if arguments.is_empty() || arguments[0] != current {
+        return false;
+    }
+
+    if is_schema_decoder_factory_call(tp, parent_call.expression()) {
+        return true;
+    }
+
+    if arguments.len() > 1
+        && is_schema_decoder_factory_call(tp, arguments[1])
+        && tp.parse_pipe_call(parent).is_some()
+    {
+        return true;
+    }
+
+    false
+}
+
+// go: internal/rules/prefer_schema_over_json.go:273 isSchemaDecoderFactoryCall
+pub(crate) fn is_schema_decoder_factory_call(tp: &mut TypeParser<'_>, node: P<Node>) -> bool {
+    let node = ast::skip_parentheses(node);
+    if node.kind() != Kind::CallExpression {
+        return false;
+    }
+    let call = node.as_call_expression();
+    if call.arguments().nodes().is_empty() {
+        return false;
+    }
+    let callee = ast::skip_parentheses(call.expression());
+    for &method_name in SCHEMA_DECODER_METHODS {
+        if tp.is_node_reference_to_effect_schema_module_api(callee, method_name)
+            || tp.is_node_reference_to_effect_parse_result_module_api(callee, method_name)
+            || tp.is_node_reference_to_effect_schema_parser_module_api(callee, method_name)
+        {
+            return true;
+        }
+    }
+    false
 }
