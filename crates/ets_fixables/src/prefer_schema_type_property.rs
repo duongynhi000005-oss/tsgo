@@ -27,12 +27,17 @@ fn run_prefer_schema_type_property_fix(ctx: &mut Context<'_, '_>) -> Vec<CodeAct
 
         let schema_name = m.schema_name;
         let type_reference = m.type_reference;
+        let property_name = m.property_name;
         if let Some(action) = ctx.new_fix_action(FixAction {
-            description: "Replace with 'typeof ".to_string() + &m.schema_name_text + ".Type'",
+            description: "Replace with 'typeof ".to_string()
+                + &m.schema_name_text
+                + "."
+                + &property_name
+                + "'",
             run: Box::new(move |tracker| {
                 let schema_type = tracker.new_qualified_name(
                     tracker.deep_clone_node(Some(schema_name)).unwrap(),
-                    tracker.new_identifier("Type"),
+                    tracker.new_identifier(&property_name),
                 );
                 let replacement = tracker.new_type_query_node(schema_type, None);
                 tracker.replace_node(sf, Some(type_reference), Some(replacement), None);

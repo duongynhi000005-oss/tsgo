@@ -24,11 +24,11 @@ func runPreferSchemaTypePropertyFix(ctx *fixable.Context) []ls.CodeAction {
 		}
 
 		if action := ctx.NewFixAction(fixable.FixAction{
-			Description: "Replace with 'typeof " + match.SchemaNameText + ".Type'",
+			Description: "Replace with 'typeof " + match.SchemaNameText + "." + match.PropertyName + "'",
 			Run: func(tracker *rewriter.Tracker) {
 				schemaType := tracker.NewQualifiedName(
 					tracker.DeepCloneNode(match.SchemaName),
-					tracker.NewIdentifier("Type"),
+					tracker.NewIdentifier(match.PropertyName),
 				)
 				replacement := tracker.NewTypeQueryNode(schemaType, nil)
 				tracker.ReplaceNode(ctx.SourceFile, match.TypeReference, replacement, nil)

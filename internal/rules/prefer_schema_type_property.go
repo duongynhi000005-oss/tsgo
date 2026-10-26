@@ -33,6 +33,7 @@ type PreferSchemaTypePropertyMatch struct {
 	TypeReference  *ast.Node
 	SchemaName     *ast.Node
 	SchemaNameText string
+	PropertyName   string
 }
 
 func AnalyzePreferSchemaTypeProperty(tp *typeparser.TypeParser, sf *ast.SourceFile) []PreferSchemaTypePropertyMatch {
@@ -66,7 +67,17 @@ func analyzePreferSchemaTypePropertyNode(tp *typeparser.TypeParser, sf *ast.Sour
 		return nil
 	}
 	outerName := typeName.AsQualifiedName()
-	if outerName.Right == nil || outerName.Right.Text() != "Type" || outerName.Left == nil {
+	if outerName.Right == nil || outerName.Left == nil {
+		return nil
+	}
+	propertyName := outerName.Right.Text()
+	var expectedNamespace string
+	switch propertyName {
+	case "Type":
+		expectedNamespace = "Schema"
+	case "Encoded", "DecodingServices", "EncodingServices":
+		expectedNamespace = "Codec"
+	default:
 		return nil
 	}
 	middleName := outerName.Left.AsNode()
@@ -83,7 +94,7 @@ func analyzePreferSchemaTypePropertyNode(tp *typeparser.TypeParser, sf *ast.Sour
 	}
 
 	schemaExport := middleName.AsQualifiedName().Right
-	if schemaExport == nil || !tp.IsNodeReferenceToEffectSchemaModuleApi(schemaExport, "Schema") {
+	if schemaExport == nil || !tp.IsNodeReferenceToEffectSchemaModuleApi(schemaExport, expectedNamespace) {
 		return nil
 	}
 
@@ -93,5 +104,6 @@ func analyzePreferSchemaTypePropertyNode(tp *typeparser.TypeParser, sf *ast.Sour
 		TypeReference:  node,
 		SchemaName:     query.ExprName.AsNode(),
 		SchemaNameText: scanner.GetTextOfNode(query.ExprName.AsNode()),
+		PropertyName:   propertyName,
 	}
 }

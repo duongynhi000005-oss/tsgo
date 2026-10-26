@@ -39,9 +39,10 @@ pub struct PreferSchemaTypePropertyMatch {
     pub type_reference: P<Node>,
     pub schema_name: P<Node>,
     pub schema_name_text: String,
+    pub property_name: String,
 }
 
-// go: internal/rules/prefer_schema_type_property.go:38 AnalyzePreferSchemaTypeProperty
+// go: internal/rules/prefer_schema_type_property.go:39 AnalyzePreferSchemaTypeProperty
 pub fn analyze_prefer_schema_type_property(
     tp: &mut TypeParser<'_>,
     sf: P<SourceFile>,
@@ -69,7 +70,7 @@ pub fn analyze_prefer_schema_type_property(
     matches
 }
 
-// go: internal/rules/prefer_schema_type_property.go:58 analyzePreferSchemaTypePropertyNode
+// go: internal/rules/prefer_schema_type_property.go:59 analyzePreferSchemaTypePropertyNode
 pub(crate) fn analyze_prefer_schema_type_property_node(
     tp: &mut TypeParser<'_>,
     sf: P<SourceFile>,
@@ -86,9 +87,12 @@ pub(crate) fn analyze_prefer_schema_type_property_node(
         return None;
     }
     let outer_name = type_name.as_qualified_name();
-    if outer_name.right().text() != "Type" {
-        return None;
-    }
+    let property_name = outer_name.right().text();
+    let expected_namespace = match property_name {
+        "Type" => "Schema",
+        "Encoded" | "DecodingServices" | "EncodingServices" => "Codec",
+        _ => return None,
+    };
     let middle_name = outer_name.left();
     if middle_name.kind() != Kind::QualifiedName {
         return None;
@@ -103,7 +107,7 @@ pub(crate) fn analyze_prefer_schema_type_property_node(
     }
 
     let schema_export = middle_name.as_qualified_name().right();
-    if !tp.is_node_reference_to_effect_schema_module_api(schema_export, "Schema") {
+    if !tp.is_node_reference_to_effect_schema_module_api(schema_export, expected_namespace) {
         return None;
     }
 
@@ -113,5 +117,6 @@ pub(crate) fn analyze_prefer_schema_type_property_node(
         type_reference: node,
         schema_name: query.expr_name(),
         schema_name_text: ets_shim::scanner::get_text_of_node(query.expr_name()),
+        property_name: property_name.to_string(),
     })
 }
